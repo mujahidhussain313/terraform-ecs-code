@@ -1,0 +1,123 @@
+resource "aws_vpc" "main" {
+ cidr_block = var.vpc_cidr
+ 
+ tags = {
+   Name = "Mujahid-VPC"
+ }
+}
+data "aws_availability_zones" "available" {}
+
+locals {
+  create_private_resources = length(var.private_subnet_cidrs) > 0
+}
+
+
+#................creating public subnets................
+
+resource "aws_subnet" "public_subnets" {
+ count      = length(var.public_subnet_cidrs)
+ vpc_id     = aws_vpc.main.id
+ cidr_block = element(var.public_subnet_cidrs, count.index)
+ availability_zone = element(data.aws_availability_zones.available.names, count.index)
+ map_public_ip_on_launch = true
+ tags = {
+   Name = "Public Subnet ${count.index + 1}"
+ }
+}
+ 
+resource "aws_subnet" "private_subnets" {
+ count      = length(var.private_subnet_cidrs)
+ vpc_id     = aws_vpc.main.id
+ cidr_block = element(var.private_subnet_cidrs, count.index)
+ availability_zone = data.aws_availability_zones.available.names[count.index]
+ 
+ tags = {
+   Name = "Private Subnet ${count.index + 1}"
+ }
+}
+
+# .............creating internet gateway................  
+
+
+resource "aws_internet_gateway" "internet-gw" {
+ vpc_id = aws_vpc.main.id
+ 
+ tags = {
+   Name = "Mujahid-VPC-IG"
+ }
+}
+
+#.....................creating route table for public subnet.................. 
+
+resource "aws_route_table" "mujahid-second_rt" {
+ vpc_id = aws_vpc.main.id
+ 
+ route {
+   cidr_block = "0.0.0.0/0"
+   gateway_id = aws_internet_gateway.internet-gw.id
+ }
+ 
+ tags = {
+   Name = "mujahid-Public-Route-Table"
+ }
+}
+
+
+#..........Private route table......... 
+
+
+resource "aws_route_table" "mujahid-private_rt" {
+ vpc_id = aws_vpc.main.id
+ count       = local.create_private_resources ? 1 : 0
+ route {
+   cidr_block = "0.0.0.0/0"
+   gateway_id = aws_nat_gateway.nat_gateway[count.index].id
+ }
+ 
+ tags = {
+   Name = "mujahid-Private-Route-Table"
+ }
+}
+
+#......... Associate Public subnet with 2nd route table ............  
+
+
+resource "aws_route_table_association" "public_subnet_asso" {
+ count = length(var.public_subnet_cidrs)
+ subnet_id      = element(aws_subnet.public_subnets[*].id, count.index)
+ route_table_id = aws_route_table.mujahid-second_rt.id
+}
+
+
+#...... private subnet association with private route table...... 
+
+
+
+## new route association
+resource "aws_route_table_association" "private_subnet_asso" {
+  count = length(var.private_subnet_cidrs)
+
+  subnet_id      = element(aws_subnet.private_subnets[*].id, count.index)
+  route_table_id = aws_route_table.mujahid-private_rt[0].id
+}
+
+
+
+# .............creating Elastic IP for NAT Gateway..................
+resource "aws_eip" "nat_eip" {
+  count       = local.create_private_resources ? 1 : 0
+  depends_on = [var.public_subnet_cidrs]
+}
+
+# .............creating NAT Gateway..................
+resource "aws_nat_gateway" "nat_gateway" {
+  count       = local.create_private_resources ? 1 : 0
+  allocation_id = aws_eip.nat_eip[count.index].id
+  subnet_id     = element(aws_subnet.public_subnets[*].id, 0) 
+
+  depends_on = [var.public_subnet_cidrs]
+
+  tags = {
+    Name        = "nat-nategatewat"
+  }
+}
