@@ -3,7 +3,7 @@ provider "aws" {
 }
 
 resource "aws_acm_certificate" "acm_certificate" {
-  domain_name       = "acmalb.mujahidhussain.store"
+  domain_name       = "acma.mujahidhussain.net"
   validation_method = "DNS"
 
   lifecycle {
@@ -12,7 +12,7 @@ resource "aws_acm_certificate" "acm_certificate" {
 }
 
 resource "aws_route53_zone" "example" {
-  name = "mujahidhussain.store"
+  name = "mujahidhussainn.net"
 }
 
 resource "aws_route53_record" "validation_route53_record" {
